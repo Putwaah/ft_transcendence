@@ -1,0 +1,131 @@
+services:
+  node_exporter:
+    container_name: node_exporter
+    restart: always
+    build: ./node_exporter
+    expose:
+      - "9100"
+    networks:
+      - prometheus-network
+    healthcheck:
+      test: 
+        [
+          "CMD-SHELL", 
+          "wget -qO- http://localhost:9100",
+        ]
+      interval: 10s
+      retries: 10
+      timeout: 10s
+
+  postgres_exporter:
+    container_name: postgres_exporter
+    image: quay.io/prometheuscommunity/postgres-exporter
+    entrypoint: /run/postgres_exporter.sh
+    user: "0"
+    networks:
+      - prometheus-network
+      - postgres_exporter-network
+      - vault_network_logs
+    volumes:
+      - ./postgres_exporter/postgres_exporter.sh:/run/postgres_exporter.sh
+      - vault_postgresExporter:/opt 
+      - vault_hostname:/opt/host
+    expose:
+      - "9187"
+    restart: always
+    depends_on:
+      postgres_users:
+        condition: service_healthy
+      postgres_dashboard:
+        condition: service_healthy
+      postgres_pong:
+        condition: service_healthy
+      vault:
+        condition: service_healthy   
+
+  prometheus:
+    container_name: prometheus
+    restart: always
+    build: ./prometheus
+    expose:
+      - "9090"
+    volumes:
+      - prometheus:/data
+    networks:
+      - prometheus-network
+      - prometheus_elastic-network
+      - postgres_exporter-network
+      - grafana-network
+    depends_on:
+      node_exporter:
+        condition: service_started
+      postgres_exporter:
+        condition: service_started
+    healthcheck:
+      test: 
+        [
+          "CMD-SHELL", 
+          "wget -qO- http://localhost:9090",
+        ]
+      interval: 10s
+      retries: 10
+      timeout: 10s
+
+
+  grafana:
+    container_name: grafana
+    restart: always
+    build: ./grafana
+    expose:
+      - "3000"
+    networks:
+      - grafana-network
+      - nginx
+      - vault_network_logs
+    volumes:
+      - grafana-data:/usr/share/grafana/data
+      - grafana-conf:/usr/share/grafana/conf
+      - vault_grafana:/opt
+      - ./grafana/datasources:/usr/share/grafana/conf/provisioning/datasources
+      - ./grafana/dashboards.yaml:/usr/share/grafana/conf/provisioning/dashboards/dashboards.yaml
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_LOG_LEVEL=debug
+    depends_on:
+      vault:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: 
+        [
+          "CMD-SHELL", 
+          "wget -qO- http://grafana:3000/api/health",
+        ]
+      interval: 10s
+      retries: 10
+      timeout: 10s
+
+
+networks:
+  prometheus-network:
+    driver: bridge 
+  
+  grafana-network:
+    driver: bridge 
+
+  postgres_exporter-network:
+    driver: bridge
+
+  prometheus_elastic-network:
+    driver: bridge
+
+
+volumes:
+  prometheus:
+  grafana-data:
+  grafana-conf:
+
+
+
+

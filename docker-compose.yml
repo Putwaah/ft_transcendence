@@ -1,0 +1,107 @@
+
+include:
+  - users/common.yml
+  - pong/common.yml
+  #- elk/common.yml
+  - logs/common.yml
+  - dashboard/common.yml
+  
+services:
+  nginx:
+    container_name: nginx
+    build: nginx
+    volumes:
+      - ./users/users/script/static/:/var/www/django/ #development purpose
+      - ./pong/app/site/static/:/var/www
+      - ./nginx/site/:/var/www/html/ #development purpose
+      - vault_nginx:/opt
+      - nginx_logs:/var/log/
+    restart: always
+    ports:
+      - "443:443"
+    networks:
+      - nginx
+    depends_on:
+      django_users:
+        condition: service_healthy
+      django_pong:
+        condition: service_healthy
+      django_dashboard:
+        condition: service_healthy
+      grafana:
+        condition: service_healthy
+   #   kibana:
+        # condition: service_healthy
+    healthcheck:
+      test: wget -qO- --no-check-certificate https://localhost || exit 1
+      interval: 10s
+      retries: 10
+      timeout: 10s
+
+  vault:
+    container_name: vault
+    build: vault
+    networks:
+      - vault_network_users
+      - vault_network_pong
+      - vault_network_dashboard
+      - vault_network_elk
+      - vault_network_logs
+      - nginx
+    expose:
+      - "8200"
+    environment:
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      VAULT_ENABLE_FILE_PERMISSIONS_CHECK: True
+      VAULT_ADDR: http://127.0.0.1:8200
+    volumes:
+      - vault_hostname:/host
+      - vault_django_pong:/django_pong_token
+      - vault_django_users:/django_users_token
+      - vault_django_dashboard:/django_dashboard_token
+      - vault_nginx:/nginx_token
+      - vault_elastic:/token_elastic
+      - vault_kibana:/token_kibana
+      - vault_logstash:/token_logstash
+      - vault_grafana:/token_grafana
+      - vault_ESexporter:/token_ESexporter
+      - vault_postgresExporter:/token_postgresExporter
+    restart: always
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -i http://localhost:8200/v1/sys/health?drsecondarycode=200",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+networks:
+  vault_network_pong:
+    driver: bridge
+  vault_network_users:
+    driver: bridge
+  vault_network_dashboard:
+    driver: bridge
+  vault_network_elk:
+    driver: bridge
+  vault_network_logs:
+    driver: bridge
+  nginx:
+    driver: bridge
+
+volumes:
+  vault_postgresExporter:
+  vault_ESexporter:
+  vault_grafana:
+  vault_elastic:
+  vault_kibana:
+  vault_logstash:
+  vault_django_dashboard:
+  vault_django_users:
+  vault_django_pong:
+  vault_nginx:
+  vault_hostname:
+  nginx_logs:
+
